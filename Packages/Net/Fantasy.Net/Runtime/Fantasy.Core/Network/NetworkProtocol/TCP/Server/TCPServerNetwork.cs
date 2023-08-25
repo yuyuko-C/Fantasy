@@ -14,7 +14,7 @@ namespace Fantasy.Core.Network
     /// <summary>
     /// 表示 TCP 协议服务端网络类。
     /// </summary>
-    public sealed class TCPServerNetwork : ANetwork
+    public sealed partial class TCPServerNetwork : AServerNetwork
     {
         #region 逻辑线程
 

@@ -16,7 +16,7 @@ namespace Fantasy.Core.Network
     /// <summary>
     /// KCP 服务端网络实现。
     /// </summary>
-    public class KCPServerNetwork : ANetwork, INetworkUpdate
+    public partial class KCPServerNetwork : AServerNetwork, INetworkUpdate
     {
         #region 逻辑线程
         /// <summary>
@@ -33,15 +33,15 @@ namespace Fantasy.Core.Network
             {
                 KcpSettings = KCPSettings.Create(NetworkTarget);
                 _rawReceiveBuffer = new byte[KcpSettings.Mtu + 5];
-                
+
                 _socket = new Socket(address.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
                 _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, false);
-                
+
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     _socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
                 }
-                
+
                 _socket.Bind(address);
                 _socket.SetSocketBufferToOsLimit();
                 NetworkHelper.SetSioUdpConnReset(_socket);
@@ -57,7 +57,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             IsDisposed = true;
 
             NetworkThread.Instance.SynchronizationContext.Post(() =>
@@ -113,7 +113,7 @@ namespace Fantasy.Core.Network
         private readonly Dictionary<uint, KCPServerNetworkChannel> _pendingConnection = new Dictionary<uint, KCPServerNetworkChannel>();
         private readonly Dictionary<uint, KCPServerNetworkChannel> _connectionChannel = new Dictionary<uint, KCPServerNetworkChannel>();
         private KCPSettings KcpSettings { get; set; }
-        private uint TimeNow => (uint) (TimeHelper.Now - _startTime);
+        private uint TimeNow => (uint)(TimeHelper.Now - _startTime);
 
         /// <summary>
         /// 向指定通道发送数据，使用KCP协议。
@@ -181,7 +181,7 @@ namespace Fantasy.Core.Network
                 return;
             }
 #endif
-            _sendBuff.WriteTo(0, (byte) KcpHeader.RepeatChannelId);
+            _sendBuff.WriteTo(0, (byte)KcpHeader.RepeatChannelId);
             _sendBuff.WriteTo(1, channelId);
             _socket.SendTo(_sendBuff, 0, 5, SocketFlags.None, clientEndPoint);
         }
@@ -205,105 +205,105 @@ namespace Fantasy.Core.Network
                 {
                     // 接收数据并更新客户端终结点
                     var receiveLength = _socket.ReceiveFrom(_rawReceiveBuffer, ref _clientEndPoint);
-                    
+
                     if (receiveLength < 1)
                     {
                         continue;
                     }
 
                     // 解析数据包头部
-                    var header = (KcpHeader) _rawReceiveBuffer[0];
+                    var header = (KcpHeader)_rawReceiveBuffer[0];
                     var channelId = BitConverter.ToUInt32(_rawReceiveBuffer, 1);
 
                     switch (header)
                     {
                         case KcpHeader.RequestConnection:
-                        {
-                            if (receiveLength != 5)
                             {
-                                break; // 数据长度异常，忽略处理
-                                }
-
-                            if (_pendingConnection.TryGetValue(channelId, out var channel))
-                            {
-                                if (!_clientEndPoint.Equals(channel.RemoteEndPoint))
+                                if (receiveLength != 5)
                                 {
-                                    // 重复通道ID，向客户端发送重复通道ID消息
-                                    SendToRepeatChannelId(channelId, _clientEndPoint);
+                                    break; // 数据长度异常，忽略处理
                                 }
-                                
-                                break;
-                            }
 
-                            if (_connectionChannel.ContainsKey(channelId))
-                            {
-                                // 已存在的通道ID，向客户端发送重复通道ID消息
-                                SendToRepeatChannelId(channelId, _clientEndPoint);
+                                if (_pendingConnection.TryGetValue(channelId, out var channel))
+                                {
+                                    if (!_clientEndPoint.Equals(channel.RemoteEndPoint))
+                                    {
+                                        // 重复通道ID，向客户端发送重复通道ID消息
+                                        SendToRepeatChannelId(channelId, _clientEndPoint);
+                                    }
+
+                                    break;
+                                }
+
+                                if (_connectionChannel.ContainsKey(channelId))
+                                {
+                                    // 已存在的通道ID，向客户端发送重复通道ID消息
+                                    SendToRepeatChannelId(channelId, _clientEndPoint);
+                                    break;
+                                }
+
+                                var timeNow = TimeNow;
+                                var tillTime = timeNow + 10 * 1000;
+                                var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, NetworkId, _clientEndPoint, _socket, timeNow);
+
+                                if (tillTime < _pendingMinTime || _pendingMinTime == 0)
+                                {
+                                    _pendingMinTime = tillTime;
+                                }
+
+                                _pendingConnection.Add(channelId, pendingChannel);
+                                _pendingConnectionTimer.Add(tillTime, channelId);
+                                _sendBuff.WriteTo(0, (byte)KcpHeader.WaitConfirmConnection);
+                                _sendBuff.WriteTo(1, channelId);
+                                _socket.SendTo(_sendBuff, 0, 5, SocketFlags.None, _clientEndPoint);
                                 break;
                             }
-                            
-                            var timeNow = TimeNow;
-                            var tillTime = timeNow + 10 * 1000;
-                            var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, NetworkId, _clientEndPoint, _socket, timeNow);
-                            
-                            if (tillTime < _pendingMinTime || _pendingMinTime == 0)
-                            {
-                                _pendingMinTime = tillTime;
-                            }
-                            
-                            _pendingConnection.Add(channelId, pendingChannel);
-                            _pendingConnectionTimer.Add(tillTime, channelId);
-                            _sendBuff.WriteTo(0, (byte) KcpHeader.WaitConfirmConnection);
-                            _sendBuff.WriteTo(1, channelId);
-                            _socket.SendTo(_sendBuff, 0, 5, SocketFlags.None, _clientEndPoint);
-                            break;
-                        }
                         case KcpHeader.ConfirmConnection:
-                        {
-                            if (receiveLength != 5)
                             {
+                                if (receiveLength != 5)
+                                {
+                                    break;
+                                }
+
+                                if (!RemovePendingConnection(channelId, _clientEndPoint, out var channel))
+                                {
+                                    break;
+                                }
+
+                                var kcp = new Kcp(channelId, channel.Output);
+                                kcp.SetNoDelay(1, 5, 2, true);
+                                kcp.SetWindowSize(KcpSettings.SendWindowSize, KcpSettings.ReceiveWindowSize);
+                                kcp.SetMtu(KcpSettings.Mtu);
+                                _connectionChannel.Add(channel.ChannelId, channel);
+                                channel.Connect(kcp, AddToUpdate, KcpSettings.MaxSendWindowSize, NetworkTarget, NetworkMessageScheduler);
                                 break;
                             }
-
-                            if (!RemovePendingConnection(channelId, _clientEndPoint, out var channel))
-                            {
-                                break;
-                            }
-
-                            var kcp = new Kcp(channelId, channel.Output);
-                            kcp.SetNoDelay(1, 5, 2, true);
-                            kcp.SetWindowSize(KcpSettings.SendWindowSize, KcpSettings.ReceiveWindowSize);
-                            kcp.SetMtu(KcpSettings.Mtu);
-                            _connectionChannel.Add(channel.ChannelId, channel);
-                            channel.Connect(kcp, AddToUpdate, KcpSettings.MaxSendWindowSize, NetworkTarget, NetworkMessageScheduler);
-                            break;
-                        }
                         case KcpHeader.ReceiveData:
-                        {
-                            var messageLength = receiveLength - 5;
-                            
-                            if (messageLength <= 0)
                             {
-                                Log.Warning($"KCP Server KcpHeader.Data  messageLength <= 0");
-                                break;
-                            }
+                                var messageLength = receiveLength - 5;
 
-                            if (!_connectionChannel.TryGetValue(channelId, out var channel))
-                            {
+                                if (messageLength <= 0)
+                                {
+                                    Log.Warning($"KCP Server KcpHeader.Data  messageLength <= 0");
+                                    break;
+                                }
+
+                                if (!_connectionChannel.TryGetValue(channelId, out var channel))
+                                {
+                                    break;
+                                }
+
+                                channel.Kcp.Input(_rawReceiveBuffer, 5, messageLength);
+                                AddToUpdate(0, channel.ChannelId);
+                                channel.Receive();
                                 break;
                             }
-                            
-                            channel.Kcp.Input(_rawReceiveBuffer, 5, messageLength);
-                            AddToUpdate(0, channel.ChannelId);
-                            channel.Receive();
-                            break;
-                        }
                         case KcpHeader.Disconnect:
-                        {
-                            // Log.Debug("KcpHeader.Disconnect");
-                            RemoveChannel(channelId);
-                            break;
-                        }
+                            {
+                                // Log.Debug("KcpHeader.Disconnect");
+                                RemoveChannel(channelId);
+                                break;
+                            }
                     }
                 }
                 catch (Exception e)
@@ -396,7 +396,7 @@ namespace Fantasy.Core.Network
 #endif
             // 接收来自客户端的数据
             Receive();
-            
+
             var nowTime = TimeNow;
 
             // 检查是否有定时更新任务需要执行
@@ -405,13 +405,13 @@ namespace Fantasy.Core.Network
                 foreach (var timeId in _updateTimer)
                 {
                     var key = timeId.Key;
-            
+
                     if (key > nowTime)
                     {
                         _updateMinTime = key;
                         break;
                     }
-            
+
                     _updateTimeOutTime.Enqueue(key);
                 }
 
@@ -422,7 +422,7 @@ namespace Fantasy.Core.Network
                     {
                         _updateChannels.Add(channelId);
                     }
-            
+
                     _updateTimer.RemoveKey(time);
                 }
             }
@@ -457,7 +457,7 @@ namespace Fantasy.Core.Network
                         AddToUpdate(channelKcp.Check(nowTime), channelId);
                     }
                 }
-            
+
                 _updateChannels.Clear();
             }
 
@@ -465,23 +465,23 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             foreach (var timeId in _pendingConnectionTimer)
             {
                 var key = timeId.Key;
-            
+
                 if (key > nowTime)
                 {
                     _pendingMinTime = key;
                     break;
                 }
-                    
+
                 foreach (var channelId in timeId.Value)
                 {
                     _pendingTimeOutTime.Enqueue(channelId);
                 }
             }
-                
+
             while (_pendingTimeOutTime.TryDequeue(out var channelId))
             {
                 if (RemovePendingConnection(channelId, null, out var channel))
@@ -510,12 +510,12 @@ namespace Fantasy.Core.Network
                 _updateChannels.Add(channelId);
                 return;
             }
-        
+
             if (tillTime < _updateMinTime || _updateMinTime == 0)
             {
                 _updateMinTime = tillTime;
             }
-        
+
             _updateTimer.Add(tillTime, channelId);
         }
 
