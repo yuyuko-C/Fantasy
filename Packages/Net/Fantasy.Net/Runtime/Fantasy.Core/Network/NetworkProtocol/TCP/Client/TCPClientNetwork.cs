@@ -301,6 +301,10 @@ namespace Fantasy.Core.Network
             _sendAction(rpcId, routeTypeOpCode, routeId, memoryStream, null);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="memoryStream"></param>
         private void Send(MemoryStream memoryStream)
         {
 #if FANTASY_DEVELOP
@@ -491,7 +495,7 @@ namespace Fantasy.Core.Network
                         return;
                     }
 
-                    if (!UnPack(_receiveBuffer, out var packInfo))
+                    if (!UnPackMessage(_receiveBuffer, out var packInfo))
                     {
                         break;
                     }

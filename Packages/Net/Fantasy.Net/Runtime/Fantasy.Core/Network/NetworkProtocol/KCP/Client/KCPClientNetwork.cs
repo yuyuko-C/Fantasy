@@ -480,7 +480,7 @@ namespace Fantasy.Core.Network
                         break;
                     }
 
-                    if (!UnPack(receiveMemoryOwner, out var packInfo))
+                    if (!UnPackMessage(receiveMemoryOwner, out var packInfo))
                     {
                         break;
                     }

@@ -75,7 +75,7 @@ namespace Fantasy.Core.Network
         /// <param name="buffer">循环缓冲区。</param>
         /// <param name="packInfo">解析得到的数据包信息。</param>
         /// <returns>如果成功解析数据包，则返回 true；否则返回 false。</returns>
-        protected bool UnPack(CircularBuffer buffer, out APackInfo packInfo)
+        protected bool UnPackMessage(CircularBuffer buffer, out APackInfo packInfo)
         {
             return _packetParser.UnPack(buffer, out packInfo);
         }
@@ -85,7 +85,7 @@ namespace Fantasy.Core.Network
         /// <param name="memoryOwner">内存块的所有者。</param>
         /// <param name="packInfo">解析得到的数据包信息。</param>
         /// <returns>如果成功解析数据包，则返回 true；否则返回 false。</returns>
-        protected bool UnPack(IMemoryOwner<byte> memoryOwner, out APackInfo packInfo)
+        protected bool UnPackMessage(IMemoryOwner<byte> memoryOwner, out APackInfo packInfo)
         {
             return _packetParser.UnPack(memoryOwner, out packInfo);
         }
