@@ -37,10 +37,6 @@ namespace Fantasy.Core.Network
         /// </summary>
         public override event Action OnConnectDisconnect;
         /// <summary>
-        /// 在通道 ID 发生变化时触发的事件，参数为新的通道 ID。
-        /// </summary>
-        public override event Action<uint> OnChangeChannelId = channelId => { };
-        /// <summary>
         /// 在接收到内存流数据包时触发的事件，参数为解析后的数据包信息。
         /// </summary>
         public override event Action<APackInfo> OnReceiveMemoryStream;
@@ -69,7 +65,7 @@ namespace Fantasy.Core.Network
             // 如果已经初始化过一次，抛出异常，要求重新实例化
             if (_isInit)
             {
-                throw new NotSupportedException($"KCPClientNetwork Id:{Id} Has already been initialized. If you want to call Connect again, please re instantiate it.");
+                throw new NotSupportedException($"KCPClientNetwork Id:{NetworkId} Has already been initialized. If you want to call Connect again, please re instantiate it.");
             }
             
             _isInit = true;
@@ -239,7 +235,7 @@ namespace Fantasy.Core.Network
                     return;
                 }
 
-                memoryStream = Pack(rpcId, routeTypeOpCode, routeId, memoryStream, message);
+                memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
                 Send(memoryStream);
             };
 

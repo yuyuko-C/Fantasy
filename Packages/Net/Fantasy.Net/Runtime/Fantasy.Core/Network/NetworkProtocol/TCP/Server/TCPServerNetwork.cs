@@ -1,3 +1,4 @@
+using NLog.Targets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -32,12 +33,12 @@ namespace Fantasy.Core.Network
                 _random = new Random();
                 _socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                 _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, false);
-            
+
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
                     _socket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
                 }
-            
+
                 _socket.Bind(address);
                 _socket.Listen(int.MaxValue);
                 _socket.SetSocketBufferToOsLimit();
@@ -55,9 +56,9 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             IsDisposed = true;
-            
+
             NetworkThread.Instance.SynchronizationContext.Post(() =>
             {
                 if (_socket.Connected)
@@ -76,7 +77,7 @@ namespace Fantasy.Core.Network
                 {
                     tcpServerNetworkChannel.Dispose();
                 }
-                
+
                 channels.Clear();
                 _connectionChannel.Clear();
                 base.Dispose();
@@ -116,7 +117,7 @@ namespace Fantasy.Core.Network
             }
 
             // 打包消息并发送
-            var sendMemoryStream = Pack(rpcId, routeTypeOpCode, routeId, memoryStream, null);
+            var sendMemoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, null);
             channel.Send(sendMemoryStream);
         }
 
@@ -144,7 +145,7 @@ namespace Fantasy.Core.Network
             }
 
             // 打包消息并发送
-            var memoryStream = Pack(rpcId, routeTypeOpCode, routeId, null, message);
+            var memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, null, message);
             channel.Send(memoryStream);
         }
 
@@ -192,15 +193,15 @@ namespace Fantasy.Core.Network
 
             try
             {
-                var channelId = 0xC0000000 | (uint) _random.Next();
+                var channelId = 0xC0000000 | (uint)_random.Next();
 
                 while (_connectionChannel.ContainsKey(channelId))
                 {
-                    channelId = 0xC0000000 | (uint) _random.Next();
+                    channelId = 0xC0000000 | (uint)_random.Next();
                 }
 
                 var channel = new TCPServerNetworkChannel(channelId, asyncEventArgs.AcceptSocket, this);
-                
+
                 ThreadSynchronizationContext.Main.Post(() =>
                 {
                     if (channel.IsDisposed)
@@ -208,9 +209,16 @@ namespace Fantasy.Core.Network
                         return;
                     }
 
-                    Session.Create(NetworkMessageScheduler, channel, NetworkTarget);
+                    var session = Session.Create(channel, NetworkMessageScheduler);
+                    // 在外部网络目标下，添加会话空闲检查组件
+                    if (NetworkTarget == NetworkTarget.Outer)
+                    {
+                        var interval = Define.SessionIdleCheckerInterval;
+                        var timeOut = Define.SessionIdleCheckerTimeout;
+                        session.AddComponent<SessionIdleCheckerComponent>().Start(interval, timeOut);
+                    }
                 });
-                
+
                 _connectionChannel.Add(channelId, channel);
                 channel.Receive();
             }
@@ -261,14 +269,14 @@ namespace Fantasy.Core.Network
             switch (asyncEventArgs.LastOperation)
             {
                 case SocketAsyncOperation.Accept:
-                {
-                    NetworkThread.Instance.SynchronizationContext.Post(() => OnAcceptComplete(asyncEventArgs));
-                    break;
-                }
+                    {
+                        NetworkThread.Instance.SynchronizationContext.Post(() => OnAcceptComplete(asyncEventArgs));
+                        break;
+                    }
                 default:
-                {
-                    throw new Exception($"Socket Accept Error: {asyncEventArgs.LastOperation}");
-                }
+                    {
+                        throw new Exception($"Socket Accept Error: {asyncEventArgs.LastOperation}");
+                    }
             }
         }
 

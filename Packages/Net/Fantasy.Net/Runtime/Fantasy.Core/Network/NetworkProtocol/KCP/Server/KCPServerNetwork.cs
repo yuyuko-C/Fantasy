@@ -138,7 +138,7 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            var sendMemoryStream = Pack(rpcId, routeTypeOpCode, routeId, memoryStream, null);
+            var sendMemoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, null);
             channel.Send(sendMemoryStream);
         }
 
@@ -164,7 +164,7 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            var memoryStream = Pack(rpcId, routeTypeOpCode, routeId, null, message);
+            var memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, null, message);
             channel.Send(memoryStream);
         }
 
@@ -245,7 +245,7 @@ namespace Fantasy.Core.Network
                             
                             var timeNow = TimeNow;
                             var tillTime = timeNow + 10 * 1000;
-                            var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, Id, _clientEndPoint, _socket, timeNow);
+                            var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, NetworkId, _clientEndPoint, _socket, timeNow);
                             
                             if (tillTime < _pendingMinTime || _pendingMinTime == 0)
                             {
@@ -275,7 +275,7 @@ namespace Fantasy.Core.Network
                             kcp.SetNoDelay(1, 5, 2, true);
                             kcp.SetWindowSize(KcpSettings.SendWindowSize, KcpSettings.ReceiveWindowSize);
                             kcp.SetMtu(KcpSettings.Mtu);
-                            _connectionChannel.Add(channel.Id, channel);
+                            _connectionChannel.Add(channel.ChannelId, channel);
                             channel.Connect(kcp, AddToUpdate, KcpSettings.MaxSendWindowSize, NetworkTarget, NetworkMessageScheduler);
                             break;
                         }
@@ -295,7 +295,7 @@ namespace Fantasy.Core.Network
                             }
                             
                             channel.Kcp.Input(_rawReceiveBuffer, 5, messageLength);
-                            AddToUpdate(0, channel.Id);
+                            AddToUpdate(0, channel.ChannelId);
                             channel.Receive();
                             break;
                         }

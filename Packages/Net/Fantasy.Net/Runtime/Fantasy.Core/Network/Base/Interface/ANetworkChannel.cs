@@ -9,12 +9,12 @@ namespace Fantasy.Core.Network
     /// <summary>
     /// 抽象的网络通道基类。
     /// </summary>
-    public abstract class ANetworkChannel
+    public abstract class ANetworkChannel : ISessionable
     {
         /// <summary>
         /// 获取通道的唯一标识 ID。
         /// </summary>
-        public uint Id { get; private set; }
+        public uint ChannelId { get; private set; }
         /// <summary>
         /// 获取或设置通道所属的场景。
         /// </summary>
@@ -53,7 +53,7 @@ namespace Fantasy.Core.Network
         /// <param name="networkId">通道所属的网络 ID。</param>
         protected ANetworkChannel(Scene scene, uint id, long networkId)
         {
-            Id = id;
+            ChannelId = id;
             Scene = scene;
             NetworkId = networkId;
         }
@@ -63,9 +63,9 @@ namespace Fantasy.Core.Network
         /// </summary>
         public virtual void Dispose()
         {
-            NetworkThread.Instance.RemoveChannel(NetworkId, Id);
-            
-            Id = 0;
+            NetworkThread.Instance.RemoveChannel(NetworkId, ChannelId);
+
+            ChannelId = 0;
             Scene = null;
             NetworkId = 0;
             IsDisposed = true;

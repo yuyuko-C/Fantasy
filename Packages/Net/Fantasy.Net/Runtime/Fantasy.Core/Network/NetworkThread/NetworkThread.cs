@@ -246,11 +246,11 @@ namespace Fantasy.Core.Network
                     return;
                 }
                 // 将网络对象添加到字典中。
-                _networks.Add(aNetwork.Id, aNetwork);
+                _networks.Add(aNetwork.NetworkId, aNetwork);
                 // 如果网络对象实现了 INetworkUpdate 接口，则将其添加到更新字典中。
                 if (aNetwork is INetworkUpdate iNetworkUpdate)
                 {
-                    _updates.Add(aNetwork.Id, iNetworkUpdate);
+                    _updates.Add(aNetwork.NetworkId, iNetworkUpdate);
                 }
             });
         }

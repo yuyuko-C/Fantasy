@@ -45,10 +45,6 @@ namespace Fantasy.Core.Network
         /// </summary>
         public override event Action OnConnectDisconnect;
         /// <summary>
-        /// 当通道ID发生变化时触发的事件。
-        /// </summary>
-        public override event Action<uint> OnChangeChannelId;
-        /// <summary>
         /// 当接收到内存流数据时触发的事件。
         /// </summary>
         public override event Action<APackInfo> OnReceiveMemoryStream;
@@ -136,7 +132,7 @@ namespace Fantasy.Core.Network
         {
             if (_isInit)
             {
-                throw new NotSupportedException($"KCPClientNetwork Id:{Id} Has already been initialized. If you want to call Connect again, please re instantiate it.");
+                throw new NotSupportedException($"KCPClientNetwork Id:{NetworkId} Has already been initialized. If you want to call Connect again, please re instantiate it.");
             }
             
             _isInit = true;
@@ -265,7 +261,7 @@ namespace Fantasy.Core.Network
                                     return;
                                 }
 
-                                memoryStream = Pack(rpcId, routeTypeOpCode, routeId, memoryStream, message);
+                                memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
                                 Send(memoryStream);
                             };
 
@@ -284,7 +280,6 @@ namespace Fantasy.Core.Network
                             // 调用ChannelId改变事件、就算没有改变也要发下、接收事件的地方会判定下
                             ThreadSynchronizationContext.Main.Post(() =>
                             {
-                                OnChangeChannelId(ChannelId);
                                 OnConnectComplete?.Invoke();
                             });
                             // 到这里正确创建上连接了、可以正常发送消息了

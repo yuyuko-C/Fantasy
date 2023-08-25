@@ -88,7 +88,7 @@ namespace Fantasy
             if (Id == targetServerId)
             {
                 var serverNetworkComponent = Scene.GetComponent<ServerNetworkComponent>();
-                var session = Session.Create(serverNetworkComponent.Network);
+                var session = Session.CreateInnerSession(serverNetworkComponent.Network);
                 _sessions.Add(targetServerId, new ConnectInfo(session, null));
                 return session;
             }

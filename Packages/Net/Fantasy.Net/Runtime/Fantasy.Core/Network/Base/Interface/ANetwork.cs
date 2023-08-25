@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.IO;
+using System.Net;
 using Fantasy.Helper;
 // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
 #pragma warning disable CS8625
@@ -39,6 +40,7 @@ namespace Fantasy.Core.Network
         public MemoryStream MemoryStream;
     }
 
+
     /// <summary>
     /// 抽象网络基类。
     /// </summary>
@@ -47,12 +49,12 @@ namespace Fantasy.Core.Network
         /// <summary>
         /// 获取网络的唯一ID。
         /// </summary>
-        public long Id { get; protected set; }
+        public long NetworkId { get; private set; }
 
         /// <summary>
         /// 获取场景对象。
         /// </summary>
-        public Scene Scene { get; protected set; }
+        public Scene Scene { get; private set; }
 
         /// <summary>
         /// 获取或设置网络是否已被释放。
@@ -65,23 +67,19 @@ namespace Fantasy.Core.Network
         public NetworkType NetworkType { get; private set; }
 
         /// <summary>
-        /// 获取网络目标类型。
-        /// </summary>
-        public NetworkTarget NetworkTarget { get; private set; }
-
-        /// <summary>
         /// 获取网络协议类型。
         /// </summary>
         public NetworkProtocolType NetworkProtocolType { get; private set; }
 
         /// <summary>
+        /// 获取网络目标类型。
+        /// </summary>
+        public NetworkTarget NetworkTarget { get; private set; }
+
+        /// <summary>
         /// 获取或设置网络消息调度器。
         /// </summary>
-        public ANetworkMessageScheduler NetworkMessageScheduler { get; protected set; }
-        /// <summary>
-        /// 打包消息的委托。
-        /// </summary>
-        protected readonly Func<uint, long, long, MemoryStream, object, MemoryStream> Pack;
+        public ANetworkMessageScheduler NetworkMessageScheduler { get; private set; }
 
         /// <summary>
         /// 初始化抽象网络基类的新实例。
@@ -96,82 +94,61 @@ namespace Fantasy.Core.Network
             NetworkType = networkType;
             NetworkTarget = networkTarget;
             NetworkProtocolType = networkProtocolType;
-            Id = IdFactory.NextRunTimeId();
+            NetworkId = IdFactory.NextRunTimeId();
+
 #if FANTASY_NET
             if (networkTarget == NetworkTarget.Inner)
             {
-                Pack = InnerPack;
                 NetworkMessageScheduler = new InnerMessageScheduler();
                 return;
             }
 #endif
-            Pack = OuterPack;
-            
+
             switch (networkType)
             {
                 case NetworkType.Client:
-                {
-                    NetworkMessageScheduler = new ClientMessageScheduler();
-                    return;
-                }
+                    {
+                        NetworkMessageScheduler = new ClientMessageScheduler();
+                        return;
+                    }
                 case NetworkType.Server:
-                {
-                    NetworkMessageScheduler = new OuterMessageScheduler();
-                    return;
-                }
+                    {
+                        NetworkMessageScheduler = new OuterMessageScheduler();
+                        return;
+                    }
             }
         }
-#if FANTASY_NET
-        /// <summary>
-        /// 内部消息打包方法。
-        /// </summary>
-        /// <param name="rpcId">RPC ID。</param>
-        /// <param name="routeTypeOpCode">路由类型与操作码。</param>
-        /// <param name="routeId">路由 ID。</param>
-        /// <param name="memoryStream">内存流，用于消息数据。</param>
-        /// <param name="message">消息对象。</param>
-        /// <returns>打包后的内存流。</returns>
-        private MemoryStream InnerPack(uint rpcId, long routeTypeOpCode, long routeId, MemoryStream memoryStream, object message)
-        {
-#if FANTASY_DEVELOP
-            // 检查是否在正确的网络线程中
-            if (NetworkThread.Instance.ManagedThreadId != Thread.CurrentThread.ManagedThreadId)
-            {
-                Log.Error("not in NetworkThread!");
-                return null;
-            }
-#endif
-            // 根据是否提供内存流打包消息
-            return memoryStream == null
-                ? InnerPacketParser.Pack(rpcId, routeId, message)
-                : InnerPacketParser.Pack(rpcId, routeId, memoryStream);
-        }
-#endif
 
         /// <summary>
-        /// 外部消息打包方法。
+        /// 将消息信息打包成内存流
         /// </summary>
-        /// <param name="rpcId">RPC ID。</param>
-        /// <param name="routeTypeOpCode">路由类型与操作码。</param>
-        /// <param name="routeId">路由 ID。</param>
-        /// <param name="memoryStream">内存流，用于消息数据。</param>
-        /// <param name="message">消息对象。</param>
-        /// <returns>打包后的内存流。</returns>
-        private MemoryStream OuterPack(uint rpcId, long routeTypeOpCode, long routeId, MemoryStream memoryStream, object message)
+        /// <param name="rpcId"></param>
+        /// <param name="routeTypeOpCode"></param>
+        /// <param name="routeId"></param>
+        /// <param name="memoryStream"></param>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        protected MemoryStream PackMessage(uint rpcId, long routeTypeOpCode, long routeId, MemoryStream memoryStream, object message)
         {
-#if FANTASY_DEVELOP
-            // 检查是否在正确的网络线程中
-            if (NetworkThread.Instance.ManagedThreadId != Thread.CurrentThread.ManagedThreadId)
+#if FANTASY_NET
+            if (NetworkTarget == NetworkTarget.Inner)
             {
-                Log.Error("not in NetworkThread!");
-                return null;
+                // 根据是否提供内存流打包消息
+                return memoryStream == null
+                    ? InnerPacketParser.Pack(rpcId, routeId, message)
+                    : InnerPacketParser.Pack(rpcId, routeId, memoryStream);
             }
+            else
 #endif
-            // 根据是否提供内存流打包消息
-            return memoryStream == null
-                ? OuterPacketParser.Pack(rpcId, routeTypeOpCode, message)
-                : OuterPacketParser.Pack(rpcId, routeTypeOpCode, memoryStream);
+            {
+                // 根据是否提供内存流打包消息
+                return memoryStream == null
+                    ? OuterPacketParser.Pack(rpcId, routeTypeOpCode, message)
+                    : OuterPacketParser.Pack(rpcId, routeTypeOpCode, memoryStream);
+            }
+
         }
+
 
         /// <summary>
         /// 发送消息。
@@ -203,9 +180,9 @@ namespace Fantasy.Core.Network
         public virtual void Dispose()
         {
             // 从网络线程中移除网络对象
-            NetworkThread.Instance?.RemoveNetwork(Id);
+            NetworkThread.Instance?.RemoveNetwork(NetworkId);
 
-            Id = 0;
+            NetworkId = 0;
             Scene = null;
             IsDisposed = true;
             NetworkType = NetworkType.None;

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Channels;
 using Fantasy.Helper;
+using MongoDB.Driver.Core.Bindings;
 #pragma warning disable CS8603
 #pragma warning disable CS8601
 #pragma warning disable CS8618
@@ -14,102 +16,70 @@ namespace Fantasy.Core.Network
     /// </summary>
     public class Session : Entity, INotSupportedPool, ISupportedMultiEntity
     {
-        private uint _rpcId;
-        /// <summary>
-        /// 获取网络会话的唯一标识符。
-        /// </summary>
-        public long NetworkId { get; private set; }
-        /// <summary>
-        /// 获取通道的标识符。
-        /// </summary>
-        public uint ChannelId { get; private set; }
-        /// <summary>
-        /// 获取最后一次接收数据的时间。
-        /// </summary>
-        public long LastReceiveTime { get; private set; }
-        /// <summary>
-        /// 获取用于网络消息调度的实例。
-        /// </summary>
-        public ANetworkMessageScheduler NetworkMessageScheduler { get; private set;}
         /// <summary>
         /// 存储所有会话的字典。
         /// </summary>
-        public static readonly Dictionary<long, Session> Sessions = new ();
+        public static readonly Dictionary<long, Session> Sessions = new();
         /// <summary>
         /// 存储请求回调的字典。
         /// </summary>
         public readonly Dictionary<long, FTask<IResponse>> RequestCallback = new();
 
+
+        private uint _rpcId;
+
+        private ISessionable _isessionable;
+
+        private long _lastReceiveTime;
+
+        private ANetworkMessageScheduler _networkMessageScheduler;
+
+        /// <summary>
+        /// 获取网络会话的唯一标识符。
+        /// </summary>
+        public long NetworkId => _isessionable.NetworkId;
+        /// <summary>
+        /// 获取通道的标识符。
+        /// </summary>
+        public uint ChannelId => _isessionable.ChannelId;
+        /// <summary>
+        /// 获取最后一次接收数据的时间。
+        /// </summary>
+        public long LastReceiveTime => _lastReceiveTime;
+        /// <summary>
+        /// 获取用于网络消息调度的实例。
+        /// </summary>
+        public ANetworkMessageScheduler NetworkMessageScheduler => _networkMessageScheduler;
+
+
         /// <summary>
         /// 创建一个会话并添加到会话字典中。
         /// </summary>
-        /// <param name="networkMessageScheduler">用于网络消息调度的实例。</param>
-        /// <param name="channel">与会话关联的通道。</param>
-        /// <param name="networkTarget">网络目标。</param>
-        public static void Create(ANetworkMessageScheduler networkMessageScheduler, ANetworkChannel channel, NetworkTarget networkTarget)
+        /// <param name="sessionable"></param>
+        /// <param name="networkMessageScheduler"></param>
+        /// <returns></returns>
+        public static Session Create(ISessionable sessionable, ANetworkMessageScheduler networkMessageScheduler)
         {
-#if FANTASY_DEVELOP
-            // 检查是否在主线程中调用
-            if (ThreadSynchronizationContext.Main.ThreadId != Thread.CurrentThread.ManagedThreadId)
-            {
-                throw new NotSupportedException("Session Create not in MainThread");
-            }
-#endif
             // 创建会话实例
-            var session = Entity.Create<Session>(channel.Scene);
-            session.ChannelId = channel.Id;
-            session.NetworkId = channel.NetworkId;
-            session.NetworkMessageScheduler = networkMessageScheduler;
+            var session = Entity.Create<Session>(sessionable.Scene);
+            session._isessionable = sessionable;
+            session._networkMessageScheduler = networkMessageScheduler;
             // 关联事件处理
-            channel.OnDispose += session.Dispose;
-            channel.OnReceiveMemoryStream += session.OnReceive;
-#if FANTASY_NET
-            // 在外部网络目标下，添加会话空闲检查组件
-            if (networkTarget == NetworkTarget.Outer)
-            {
-                var interval = Define.SessionIdleCheckerInterval;
-                var timeOut = Define.SessionIdleCheckerTimeout;
-                session.AddComponent<SessionIdleCheckerComponent>().Start(interval, timeOut);
-            }
-#endif
+            sessionable.OnDispose += session.Dispose;
+            sessionable.OnReceiveMemoryStream += session.OnReceive;
             // 将会话添加到会话字典中
             Sessions.Add(session.Id, session);
-        }
 
-        /// <summary>
-        /// 创建一个与客户端网络相关的会话并添加到会话字典中。
-        /// </summary>
-        /// <param name="network">与会话关联的客户端网络。</param>
-        /// <returns>创建的会话实例。</returns>
-        public static Session Create(AClientNetwork network)
-        {
-#if FANTASY_DEVELOP
-            // 检查是否在主线程中调用
-            if (ThreadSynchronizationContext.Main.ThreadId != Thread.CurrentThread.ManagedThreadId)
-            {
-                throw new NotSupportedException("Session Create not in MainThread");
-            }
-#endif
-            // 创建会话实例
-            var session = Entity.Create<Session>(network.Scene);
-            session.ChannelId = network.ChannelId;
-            session.NetworkId = network.Id;
-            session.NetworkMessageScheduler = network.NetworkMessageScheduler;
-            // 关联事件处理
-            network.OnDispose += session.Dispose;
-            network.OnChangeChannelId += session.OnChangeChannelId;
-            network.OnReceiveMemoryStream += session.OnReceive;
-            // 将会话添加到会话字典中
-            Sessions.Add(session.Id, session);
             return session;
         }
+
 #if FANTASY_NET
         /// <summary>
         /// 创建一个与服务器网络相关的会话并添加到会话字典中。
         /// </summary>
         /// <param name="network">与会话关联的服务器网络。</param>
         /// <returns>创建的会话实例。</returns>
-        public static ServerInnerSession Create(ANetwork network)
+        public static ServerInnerSession CreateInnerSession(ANetwork network)
         {
 #if FANTASY_DEVELOP
             // 检查是否在主线程中调用
@@ -119,7 +89,7 @@ namespace Fantasy.Core.Network
             }
 #endif
             var session = Entity.Create<ServerInnerSession>(network.Scene);
-            session.NetworkMessageScheduler = network.NetworkMessageScheduler;
+            session._networkMessageScheduler = network.NetworkMessageScheduler;
             Sessions.Add(session.Id, session);
             return session;
         }
@@ -171,7 +141,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             var id = Id;
             var networkId = NetworkId;
             var channelId = ChannelId;
@@ -191,8 +161,8 @@ namespace Fantasy.Core.Network
                 });
             }
 
-            NetworkId = 0;
-            ChannelId = 0;
+            _isessionable = null;
+            _networkMessageScheduler = null;
             base.Dispose();
             // 从会话字典中移除会话
             Sessions.Remove(id);
@@ -265,7 +235,7 @@ namespace Fantasy.Core.Network
 
             // 创建用于等待响应的任务
             var requestCallback = FTask<IResponse>.Create();
-            
+
             unchecked
             {
                 var rpcId = ++_rpcId; // 增加RPC标识符
@@ -294,11 +264,11 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            LastReceiveTime = TimeHelper.Now;
+            _lastReceiveTime = TimeHelper.Now;
 
             try
             {
-                NetworkMessageScheduler.Scheduler(this, packInfo).Coroutine();
+                _networkMessageScheduler.Scheduler(this, packInfo).Coroutine();
             }
             catch (Exception e)
             {
@@ -307,11 +277,6 @@ namespace Fantasy.Core.Network
                 Dispose();
                 Log.Error(e);
             }
-        }
-
-        private void OnChangeChannelId(uint channelId)
-        {
-            ChannelId = channelId;
         }
     }
 }

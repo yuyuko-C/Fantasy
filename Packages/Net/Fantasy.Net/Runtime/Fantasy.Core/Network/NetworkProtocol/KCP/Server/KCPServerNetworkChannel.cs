@@ -99,8 +99,8 @@ namespace Fantasy.Core.Network
 
             Kcp = null;
             var buff = new byte[5];
-            buff.WriteTo(0, (byte) KcpHeader.Disconnect);
-            buff.WriteTo(1, Id);
+            buff.WriteTo(0, (byte)KcpHeader.Disconnect);
+            buff.WriteTo(1, ChannelId);
             _socket.SendTo(buff, 5, SocketFlags.None, RemoteEndPoint);
 #if NETDEBUG
             Log.Debug($"KCPServerNetworkChannel ConnectionPtrChannel:{KCPServerNetwork.ConnectionPtrChannel.Count}");
@@ -135,15 +135,21 @@ namespace Fantasy.Core.Network
             _addToUpdate = addToUpdate;
             _rawSendBuffer = new byte[ushort.MaxValue];
             PacketParser = APacketParser.CreatePacketParser(networkTarget);
-            
+
             ThreadSynchronizationContext.Main.Post(() =>
             {
                 if (IsDisposed)
                 {
                     return;
                 }
-
-                Session.Create(networkMessageScheduler, this, networkTarget);
+                var session = Session.Create(this, networkMessageScheduler);
+                // 在外部网络目标下，添加会话空闲检查组件
+                if (networkTarget == NetworkTarget.Outer)
+                {
+                    var interval = Define.SessionIdleCheckerInterval;
+                    var timeOut = Define.SessionIdleCheckerTimeout;
+                    session.AddComponent<SessionIdleCheckerComponent>().Start(interval, timeOut);
+                }
             });
         }
 
@@ -166,7 +172,7 @@ namespace Fantasy.Core.Network
             }
 
             // 检查等待发送的消息，如果超出两倍窗口大小，KCP作者给的建议是要断开连接
-            
+
             var waitSendSize = Kcp.WaitSnd;
 
             if (waitSendSize > _maxSndWnd)
@@ -179,7 +185,7 @@ namespace Fantasy.Core.Network
             Kcp.Send(memoryStream.GetBuffer(), 0, (int)memoryStream.Length);
             // 因为memoryStream对象池出来的、所以需要手动回收下
             memoryStream.Dispose();
-            _addToUpdate(0, Id);
+            _addToUpdate(0, ChannelId);
         }
 
         /// <summary>
@@ -199,27 +205,27 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            for (;;)
+            for (; ; )
             {
                 try
                 {
                     // 获得一个完整消息的长度
-                    
+
                     var peekSize = Kcp.PeekSize();
-                    
+
                     // 如果没有接收的消息那就跳出当前循环。
-                    
+
                     if (peekSize < 0)
                     {
                         return;
                     }
-                    
+
                     // 如果为0，表示当前消息发生错误。提示下、一般情况不会发生的
                     if (peekSize == 0)
                     {
                         throw new Exception("SocketError.NetworkReset");
                     }
-                    
+
                     var receiveMemoryOwner = _memoryPool.Rent(Packet.OuterPacketMaxLength);
                     var receiveCount = Kcp.Receive(receiveMemoryOwner.Memory, peekSize);
 
@@ -231,7 +237,7 @@ namespace Fantasy.Core.Network
                         break;
                     }
 
-                    if (!PacketParser.UnPack(receiveMemoryOwner,out var packInfo))
+                    if (!PacketParser.UnPack(receiveMemoryOwner, out var packInfo))
                     {
                         break;
                     }
@@ -272,7 +278,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             try
             {
                 if (count == 0)
@@ -280,8 +286,8 @@ namespace Fantasy.Core.Network
                     throw new Exception("KcpOutput count 0");
                 }
 
-                _rawSendBuffer.WriteTo(0, (byte) KcpHeader.ReceiveData);
-                _rawSendBuffer.WriteTo(1, Id);
+                _rawSendBuffer.WriteTo(0, (byte)KcpHeader.ReceiveData);
+                _rawSendBuffer.WriteTo(1, ChannelId);
                 Buffer.BlockCopy(bytes, 0, _rawSendBuffer, 5, count);
                 _socket.SendTo(_rawSendBuffer, 0, count + 5, SocketFlags.None, RemoteEndPoint);
             }

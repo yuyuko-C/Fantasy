@@ -7,7 +7,7 @@ namespace Fantasy.Core.Network
     /// <summary>
     /// 抽象客户端网络基类。
     /// </summary>
-    public abstract class AClientNetwork : ANetwork
+    public abstract class AClientNetwork : ANetwork, ISessionable
     {
         /// <summary>
         /// 获取或设置通道ID。
@@ -33,11 +33,6 @@ namespace Fantasy.Core.Network
         /// 在连接断开时触发的事件。
         /// </summary>
         public abstract event Action OnConnectDisconnect;
-
-        /// <summary>
-        /// 在通道ID更改时触发的事件。
-        /// </summary>
-        public abstract event Action<uint> OnChangeChannelId;
 
         /// <summary>
         /// 在接收到内存流时触发的事件。

@@ -38,7 +38,7 @@ namespace Fantasy.Core.Network
         /// <param name="id">通道 ID。</param>
         /// <param name="socket">与客户端连接的 Socket。</param>
         /// <param name="network">所属的网络实例。</param>
-        public TCPServerNetworkChannel(uint id, Socket socket, ANetwork network) : base(network.Scene, id, network.Id)
+        public TCPServerNetworkChannel(uint id, Socket socket, ANetwork network) : base(network.Scene, id, network.NetworkId)
         {
 #if FANTASY_DEVELOP
             if (NetworkThread.Instance.ManagedThreadId != Thread.CurrentThread.ManagedThreadId)

@@ -29,19 +29,19 @@ namespace Fantasy.Core.Network
             switch (networkProtocolType)
             {
                 case NetworkProtocolType.KCP:
-                {
-                    Network = new KCPClientNetwork(Scene, networkTarget);
-                    return;
-                }
+                    {
+                        Network = new KCPClientNetwork(Scene, networkTarget);
+                        return;
+                    }
                 case NetworkProtocolType.TCP:
-                {
-                    Network = new TCPClientNetwork(Scene, networkTarget);
-                    return;
-                }
+                    {
+                        Network = new TCPClientNetwork(Scene, networkTarget);
+                        return;
+                    }
                 default:
-                {
-                    throw new NotSupportedException($"Unsupported NetworkProtocolType:{networkProtocolType}");
-                }
+                    {
+                        throw new NotSupportedException($"Unsupported NetworkProtocolType:{networkProtocolType}");
+                    }
             }
         }
 
@@ -59,9 +59,14 @@ namespace Fantasy.Core.Network
             {
                 throw new NotSupportedException("Network is null or isDisposed");
             }
-            
-            Network.Connect(remoteEndPoint, onConnectComplete, onConnectFail, onConnectDisconnect, connectTimeout);
-            Session = Session.Create(Network);
+
+            Network.Connect(remoteEndPoint, () =>
+            {
+                Session = Session.Create(Network, Network.NetworkMessageScheduler);
+                onConnectComplete();
+            }, onConnectFail, onConnectDisconnect, connectTimeout);
+
+
         }
 
         /// <summary>
