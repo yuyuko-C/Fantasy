@@ -64,11 +64,11 @@ namespace Fantasy.Core.Network
             /// </summary>
             /// <param name="scene">所属场景</param>
             /// <param name="id">通道 ID</param>
-            /// <param name="networkId">网络 ID</param>
+            /// <param name="network">网络</param>
             /// <param name="remoteEndPoint">远程终端点</param>
             /// <param name="socket">套接字</param>
             /// <param name="createTime">创建时间</param>
-            public KCPServerNetworkChannel(Scene scene, uint id, long networkId, EndPoint remoteEndPoint, Socket socket, uint createTime) : base(scene, id, networkId)
+            public KCPServerNetworkChannel(Scene scene, uint id, ANetwork network, EndPoint remoteEndPoint, Socket socket, uint createTime) : base(scene, id, network)
             {
 #if FANTASY_DEVELOP
             if (NetworkThread.Instance.ManagedThreadId != Thread.CurrentThread.ManagedThreadId)
@@ -137,7 +137,6 @@ namespace Fantasy.Core.Network
                 _maxSndWnd = maxSndWnd;
                 _addToUpdate = addToUpdate;
                 _rawSendBuffer = new byte[ushort.MaxValue];
-                PacketParser = APacketParser.CreatePacketParser(networkTarget);
 
                 ThreadSynchronizationContext.Main.Post(() =>
                 {
@@ -240,7 +239,7 @@ namespace Fantasy.Core.Network
                             break;
                         }
 
-                        if (!PacketParser.UnPack(receiveMemoryOwner, out var packInfo))
+                        if (!UnPack(receiveMemoryOwner, out var packInfo))
                         {
                             break;
                         }

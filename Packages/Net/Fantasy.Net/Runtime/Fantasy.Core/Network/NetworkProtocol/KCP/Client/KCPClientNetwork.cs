@@ -68,7 +68,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             IsDisposed = true;
 
             NetworkThread.Instance.SynchronizationContext.Post(() =>
@@ -77,14 +77,14 @@ namespace Fantasy.Core.Network
                 {
                     SendHeader(KcpHeader.Disconnect);
                 }
-                
+
                 if (_socket.Connected)
                 {
                     if (OnConnectDisconnect != null)
                     {
                         ThreadSynchronizationContext.Main.Post(OnConnectDisconnect);
                     }
-                    
+
                     _socket.Disconnect(false);
                     _socket.Close();
                 }
@@ -97,8 +97,6 @@ namespace Fantasy.Core.Network
                 _sendAction = null;
                 _rawSendBuffer = null;
                 _rawReceiveBuffer = null;
-                
-                _packetParser?.Dispose();
 
                 ClearConnectTimeout(ref _connectTimeoutId);
 
@@ -133,7 +131,7 @@ namespace Fantasy.Core.Network
             {
                 throw new NotSupportedException($"KCPClientNetwork Id:{NetworkId} Has already been initialized. If you want to call Connect again, please re instantiate it.");
             }
-            
+
             _isInit = true;
             OnConnectFail = onConnectFail;
             OnConnectComplete = onConnectComplete;
@@ -182,7 +180,7 @@ namespace Fantasy.Core.Network
         #endregion
 
         #region 网络主线程
-        
+
         private Socket _socket;
         private int _maxSndWnd;
         private Kcp _kcp;
@@ -192,14 +190,13 @@ namespace Fantasy.Core.Network
         private readonly long _startTime;
         private byte[] _rawReceiveBuffer;
         private KCPSettings _kcpSettings;
-        private APacketParser _packetParser;
         private MemoryPool<byte> _memoryPool;
         private Queue<MessageCacheInfo> _messageCache;
         private Action<uint, long, long, MemoryStream, object> _sendAction;
         private readonly Queue<uint> _updateTimeOutTime = new Queue<uint>();
         private EndPoint _clientEndPoint = new IPEndPoint(IPAddress.Any, 0);
         private readonly SortedSet<uint> _updateTimer = new SortedSet<uint>();
-        private uint TimeNow => (uint) (TimeHelper.Now - _startTime);
+        private uint TimeNow => (uint)(TimeHelper.Now - _startTime);
 
         private void Receive()
         {
@@ -208,113 +205,112 @@ namespace Fantasy.Core.Network
                 try
                 {
                     var receiveLength = _socket.ReceiveFrom(_rawReceiveBuffer, ref _clientEndPoint);
-                    
+
                     if (receiveLength > _rawReceiveBuffer.Length)
                     {
                         Log.Error($"KCP ClientConnection: message of size {receiveLength} does not fit into buffer of size {_rawReceiveBuffer.Length}. The excess was silently dropped. Disconnecting.");
                         Dispose();
                         return;
                     }
-                    
-                    var header = (KcpHeader) _rawReceiveBuffer[0];
+
+                    var header = (KcpHeader)_rawReceiveBuffer[0];
                     var channelId = BitConverter.ToUInt32(_rawReceiveBuffer, 1);
 
                     switch (header)
                     {
                         case KcpHeader.RepeatChannelId:
-                        {
-                            if (receiveLength != 5 || channelId != ChannelId)
                             {
-                                break;
-                            }
-                            
-                            // 到这里是客户端的channelId再服务器上已经存在、需要重新生成一个再次尝试连接
-                            ChannelId = CreateChannelId();
-                            SendHeader(KcpHeader.RequestConnection);
-                            // 这里要处理入如果有发送的消息的问题、后面处理
-                            break;
-                        }
-                        case KcpHeader.WaitConfirmConnection:
-                        {
-                            if (receiveLength != 5 || channelId != ChannelId)
-                            {
-                                break;
-                            }
-        
-                            SendHeader(KcpHeader.ConfirmConnection);
-                            ClearConnectTimeout(ref _connectTimeoutId);
-                            // 创建KCP和相关的初始化
-                            _kcp = new Kcp(channelId, Output);
-                            _kcp.SetNoDelay(1, 5, 2, true);
-                            _kcp.SetWindowSize(_kcpSettings.SendWindowSize, _kcpSettings.ReceiveWindowSize);
-                            _kcp.SetMtu(_kcpSettings.Mtu);
-                            _rawSendBuffer = new byte[ushort.MaxValue];
-                            _packetParser = APacketParser.CreatePacketParser(NetworkTarget);
-                            
-                            // 把缓存的消息全部发送给服务器
-
-                            _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
-                            {
-                                if (IsDisposed)
+                                if (receiveLength != 5 || channelId != ChannelId)
                                 {
-                                    return;
+                                    break;
                                 }
 
-                                memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
-                                Send(memoryStream);
-                            };
-
-                            while (_messageCache.TryDequeue(out var messageCache))
-                            {
-                                _sendAction(
-                                    messageCache.RpcId, 
-                                    messageCache.RouteTypeOpCode, 
-                                    messageCache.RouteId,
-                                    messageCache.MemoryStream, 
-                                    messageCache.Message);
+                                // 到这里是客户端的channelId再服务器上已经存在、需要重新生成一个再次尝试连接
+                                ChannelId = CreateChannelId();
+                                SendHeader(KcpHeader.RequestConnection);
+                                // 这里要处理入如果有发送的消息的问题、后面处理
+                                break;
                             }
-
-                            _messageCache.Clear();
-                            _messageCache = null;
-                            // 调用ChannelId改变事件、就算没有改变也要发下、接收事件的地方会判定下
-                            ThreadSynchronizationContext.Main.Post(() =>
+                        case KcpHeader.WaitConfirmConnection:
                             {
-                                OnConnectComplete?.Invoke();
-                            });
-                            // 到这里正确创建上连接了、可以正常发送消息了
-                            break;
-                        }
+                                if (receiveLength != 5 || channelId != ChannelId)
+                                {
+                                    break;
+                                }
+
+                                SendHeader(KcpHeader.ConfirmConnection);
+                                ClearConnectTimeout(ref _connectTimeoutId);
+                                // 创建KCP和相关的初始化
+                                _kcp = new Kcp(channelId, Output);
+                                _kcp.SetNoDelay(1, 5, 2, true);
+                                _kcp.SetWindowSize(_kcpSettings.SendWindowSize, _kcpSettings.ReceiveWindowSize);
+                                _kcp.SetMtu(_kcpSettings.Mtu);
+                                _rawSendBuffer = new byte[ushort.MaxValue];
+
+                                // 把缓存的消息全部发送给服务器
+
+                                _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
+                                {
+                                    if (IsDisposed)
+                                    {
+                                        return;
+                                    }
+
+                                    memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
+                                    Send(memoryStream);
+                                };
+
+                                while (_messageCache.TryDequeue(out var messageCache))
+                                {
+                                    _sendAction(
+                                        messageCache.RpcId,
+                                        messageCache.RouteTypeOpCode,
+                                        messageCache.RouteId,
+                                        messageCache.MemoryStream,
+                                        messageCache.Message);
+                                }
+
+                                _messageCache.Clear();
+                                _messageCache = null;
+                                // 调用ChannelId改变事件、就算没有改变也要发下、接收事件的地方会判定下
+                                ThreadSynchronizationContext.Main.Post(() =>
+                                {
+                                    OnConnectComplete?.Invoke();
+                                });
+                                // 到这里正确创建上连接了、可以正常发送消息了
+                                break;
+                            }
                         case KcpHeader.ReceiveData:
-                        {
-                            var messageLength = receiveLength - 5;
-                            
-                            if (messageLength <= 0)
                             {
-                                Log.Warning($"KCPClient KcpHeader.Data  messageLength <= 0");
+                                var messageLength = receiveLength - 5;
+
+                                if (messageLength <= 0)
+                                {
+                                    Log.Warning($"KCPClient KcpHeader.Data  messageLength <= 0");
+                                    break;
+                                }
+
+                                if (channelId != ChannelId)
+                                {
+                                    break;
+                                }
+
+                                _kcp.Input(_rawReceiveBuffer, 5, messageLength);
+                                AddToUpdate(0);
+                                KcpReceive();
                                 break;
                             }
-
-                            if (channelId != ChannelId)
-                            {
-                                break;
-                            }
-
-                            _kcp.Input(_rawReceiveBuffer, 5, messageLength);
-                            AddToUpdate(0);
-                            KcpReceive();
-                            break;
-                        }
                         case KcpHeader.Disconnect:
-                        {
-                            if (channelId != ChannelId)
                             {
+                                if (channelId != ChannelId)
+                                {
+                                    break;
+                                }
+
+                                _isDisconnect = true;
+                                Dispose();
                                 break;
                             }
-                            
-                            _isDisconnect = true;
-                            Dispose();
-                            break;
-                        }
                     }
                 }
                 // this is fine, the socket might have been closed in the other end
@@ -340,7 +336,7 @@ namespace Fantasy.Core.Network
             }
 #endif
             // 检查等待发送的消息，如果超出两倍窗口大小，KCP作者给的建议是要断开连接
-            
+
             var waitSendSize = _kcp.WaitSnd;
 
             if (waitSendSize > _maxSndWnd)
@@ -349,7 +345,7 @@ namespace Fantasy.Core.Network
                 Dispose();
                 return;
             }
-            
+
             _kcp.Send(memoryStream.GetBuffer(), 0, (int)memoryStream.Length);
             memoryStream.Dispose();
             AddToUpdate(0);
@@ -418,7 +414,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             try
             {
                 if (count == 0)
@@ -426,7 +422,7 @@ namespace Fantasy.Core.Network
                     throw new Exception("KcpOutput count 0");
                 }
 
-                _rawSendBuffer.WriteTo(0, (byte) KcpHeader.ReceiveData);
+                _rawSendBuffer.WriteTo(0, (byte)KcpHeader.ReceiveData);
                 _rawSendBuffer.WriteTo(1, ChannelId);
                 Buffer.BlockCopy(bytes, 0, _rawSendBuffer, 5, count);
                 _socket.Send(_rawSendBuffer, 0, count + 5, SocketFlags.None);
@@ -451,12 +447,12 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            for (;;)
+            for (; ; )
             {
                 try
                 {
                     // 获得一个完整消息的长度
-                    
+
                     var peekSize = _kcp.PeekSize();
 
                     // 如果没有接收的消息那就跳出当前循环。
@@ -484,7 +480,7 @@ namespace Fantasy.Core.Network
                         break;
                     }
 
-                    if (!_packetParser.UnPack(receiveMemoryOwner, out var packInfo))
+                    if (!UnPack(receiveMemoryOwner, out var packInfo))
                     {
                         break;
                     }
@@ -495,7 +491,7 @@ namespace Fantasy.Core.Network
                         {
                             return;
                         }
-                        
+
                         OnReceiveMemoryStream(packInfo);
                     });
                 }
@@ -512,14 +508,14 @@ namespace Fantasy.Core.Network
         public void Update()
         {
             Receive();
-            
+
             var nowTime = TimeNow;
-            
+
             if (_updateTimer.Count == 0 || nowTime < _updateMinTime)
             {
                 return;
             }
-            
+
             foreach (var timeId in _updateTimer)
             {
                 if (timeId > nowTime)
@@ -527,10 +523,10 @@ namespace Fantasy.Core.Network
                     _updateMinTime = timeId;
                     break;
                 }
-            
+
                 _updateTimeOutTime.Enqueue(timeId);
             }
-            
+
             while (_updateTimeOutTime.TryDequeue(out var time))
             {
                 KcpUpdate();
@@ -556,7 +552,7 @@ namespace Fantasy.Core.Network
                 KcpUpdate();
                 return;
             }
-        
+
             if (tillTime < _updateMinTime || _updateMinTime == 0)
             {
                 _updateMinTime = tillTime;
@@ -578,7 +574,7 @@ namespace Fantasy.Core.Network
             }
 #endif
             var nowTime = TimeNow;
-            
+
             try
             {
                 _kcp.Update(nowTime);
@@ -587,7 +583,7 @@ namespace Fantasy.Core.Network
             {
                 Log.Error(e);
             }
-                
+
             AddToUpdate(_kcp.Check(nowTime));
         }
 
@@ -606,7 +602,7 @@ namespace Fantasy.Core.Network
         /// <returns>新的通道 ID。</returns>
         private uint CreateChannelId()
         {
-            return 0xC0000000 | (uint) new Random().Next();
+            return 0xC0000000 | (uint)new Random().Next();
         }
 
         /// <summary>
@@ -619,9 +615,9 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             var buff = new byte[5];
-            buff.WriteTo(0, (byte) kcpHeader);
+            buff.WriteTo(0, (byte)kcpHeader);
             buff.WriteTo(1, ChannelId);
             _socket.Send(buff, 5, SocketFlags.None);
         }

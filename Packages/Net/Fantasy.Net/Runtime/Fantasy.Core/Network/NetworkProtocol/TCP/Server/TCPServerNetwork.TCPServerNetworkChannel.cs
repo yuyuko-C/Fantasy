@@ -41,7 +41,7 @@ namespace Fantasy.Core.Network
             /// <param name="id">通道 ID。</param>
             /// <param name="socket">与客户端连接的 Socket。</param>
             /// <param name="network">所属的网络实例。</param>
-            public TCPServerNetworkChannel(uint id, Socket socket, ANetwork network) : base(network.Scene, id, network.NetworkId)
+            public TCPServerNetworkChannel(uint id, Socket socket, ANetwork network) : base(network.Scene, id, network)
             {
 #if FANTASY_DEVELOP
             if (NetworkThread.Instance.ManagedThreadId != Thread.CurrentThread.ManagedThreadId)
@@ -56,8 +56,6 @@ namespace Fantasy.Core.Network
 
                 _innArgs.Completed += OnComplete;
                 _outArgs.Completed += OnComplete;
-
-                PacketParser = APacketParser.CreatePacketParser(network.NetworkTarget);
             }
 
             /// <summary>
@@ -295,7 +293,7 @@ namespace Fantasy.Core.Network
                             return;
                         }
 
-                        if (!PacketParser.UnPack(_receiveBuffer, out var packInfo))
+                        if (!UnPack(_receiveBuffer, out var packInfo))
                         {
                             break;
                         }

@@ -1,4 +1,7 @@
+using Fantasy.DataStructure;
+using NLog.Targets;
 using System;
+using System.Buffers;
 using System.IO;
 using System.Net;
 #pragma warning disable CS8625
@@ -33,32 +36,60 @@ namespace Fantasy.Core.Network
             /// 获取通道的远程终端点。
             /// </summary>
             public EndPoint RemoteEndPoint { get; protected set; }
-            /// <summary>
-            /// 获取通道的数据包解析器。
-            /// </summary>
-            public APacketParser PacketParser { get; protected set; }
+            ///// <summary>
+            ///// 获取通道的数据包解析器。
+            ///// </summary>
+            //public APacketParser _packetParser { get; protected set; }
 
             /// <summary>
             /// 当通道被释放时触发的事件。
             /// </summary>
             public abstract event Action OnDispose;
+
             /// <summary>
             /// 当通道接收到内存流数据包时触发的事件。
             /// </summary>
             public abstract event Action<APackInfo> OnReceiveMemoryStream;
 
             /// <summary>
+            /// 网络通信包解析器
+            /// </summary>
+            private APacketParser _packetParser;
+
+            /// <summary>
             /// 初始化抽象网络通道基类的新实例。
             /// </summary>
             /// <param name="scene">通道所属的场景。</param>
             /// <param name="id">通道的唯一标识 ID。</param>
-            /// <param name="networkId">通道所属的网络 ID。</param>
-            protected ANetworkChannel(Scene scene, uint id, long networkId)
+            /// <param name="network">通道所属的网络。</param>
+            protected ANetworkChannel(Scene scene, uint id, ANetwork network)
             {
                 ChannelId = id;
                 Scene = scene;
-                NetworkId = networkId;
+                NetworkId = network.NetworkId;
+                _packetParser = APacketParser.CreatePacketParser(network.NetworkTarget);
             }
+            /// <summary>
+            /// 从循环缓冲区解析数据包。
+            /// </summary>
+            /// <param name="buffer">循环缓冲区。</param>
+            /// <param name="packInfo">解析得到的数据包信息。</param>
+            /// <returns>如果成功解析数据包，则返回 true；否则返回 false。</returns>
+            protected bool UnPack(CircularBuffer buffer, out APackInfo packInfo)
+            {
+                return _packetParser.UnPack(buffer, out packInfo);
+            }
+            /// <summary>
+            /// 从内存块解析数据包。
+            /// </summary>
+            /// <param name="memoryOwner">内存块的所有者。</param>
+            /// <param name="packInfo">解析得到的数据包信息。</param>
+            /// <returns>如果成功解析数据包，则返回 true；否则返回 false。</returns>
+            protected bool UnPack(IMemoryOwner<byte> memoryOwner, out APackInfo packInfo)
+            {
+                return _packetParser.UnPack(memoryOwner, out packInfo);
+            }
+
 
             /// <summary>
             /// 释放通道资源。
@@ -73,10 +104,10 @@ namespace Fantasy.Core.Network
                 IsDisposed = true;
                 RemoteEndPoint = null;
 
-                if (PacketParser != null)
+                if (_packetParser != null)
                 {
-                    PacketParser.Dispose();
-                    PacketParser = null;
+                    _packetParser.Dispose();
+                    _packetParser = null;
                 }
             }
         }

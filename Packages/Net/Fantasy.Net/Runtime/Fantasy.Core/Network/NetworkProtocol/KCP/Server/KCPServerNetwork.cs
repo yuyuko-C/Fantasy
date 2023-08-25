@@ -244,7 +244,7 @@ namespace Fantasy.Core.Network
 
                                 var timeNow = TimeNow;
                                 var tillTime = timeNow + 10 * 1000;
-                                var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, NetworkId, _clientEndPoint, _socket, timeNow);
+                                var pendingChannel = new KCPServerNetworkChannel(Scene, channelId, this, _clientEndPoint, _socket, timeNow);
 
                                 if (tillTime < _pendingMinTime || _pendingMinTime == 0)
                                 {

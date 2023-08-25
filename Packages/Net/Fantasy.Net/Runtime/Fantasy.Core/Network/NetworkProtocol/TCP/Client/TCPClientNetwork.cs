@@ -66,14 +66,14 @@ namespace Fantasy.Core.Network
             {
                 throw new NotSupportedException($"KCPClientNetwork Id:{NetworkId} Has already been initialized. If you want to call Connect again, please re instantiate it.");
             }
-            
+
             _isInit = true;
             OnConnectFail = onConnectFail;
             OnConnectComplete = onConnectComplete;
             OnConnectDisconnect = onConnectDisconnect;
 
             // 生成随机的 Channel ID
-            ChannelId = 0xC0000000 | (uint) new Random().Next();
+            ChannelId = 0xC0000000 | (uint)new Random().Next();
 
             // 设置发送操作的委托
             _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
@@ -92,9 +92,6 @@ namespace Fantasy.Core.Network
                     MemoryStream = memoryStream
                 });
             };
-
-            // 创建数据包解析器
-            _packetParser = APacketParser.CreatePacketParser(NetworkTarget);
 
             // 设置异步操作完成时的回调函数
             _outArgs.Completed += OnComplete;
@@ -115,11 +112,11 @@ namespace Fantasy.Core.Network
                 {
                     RemoteEndPoint = remoteEndPoint
                 };
-                
+
                 outArgs.Completed += OnComplete;
 
                 // 创建套接字并设置参数
-                _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) {NoDelay = true};
+                _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
                 _socket.SetSocketBufferToOsLimit();
                 // 如果连接成功，直接返回；否则继续执行连接操作
                 if (_socket.ConnectAsync(outArgs))
@@ -142,9 +139,9 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             IsDisposed = true;
-            
+
             NetworkThread.Instance.SynchronizationContext.Post(() =>
             {
                 if (_socket.Connected)
@@ -162,10 +159,8 @@ namespace Fantasy.Core.Network
                 _innArgs?.Dispose();
                 _sendBuffer?.Dispose();
                 _receiveBuffer?.Dispose();
-                _packetParser?.Dispose();
 
                 _sendAction = null;
-                _packetParser = null;
                 _isSending = false;
 
                 if (_messageCache != null)
@@ -173,19 +168,18 @@ namespace Fantasy.Core.Network
                     _messageCache.Clear();
                     _messageCache = null;
                 }
-                
+
                 ThreadSynchronizationContext.Main.Post(OnDispose);
                 base.Dispose();
             });
         }
-        
+
         #endregion
 
         #region 网络主线程
-        
+
         private Socket _socket; // 用于通信的套接字。
         private bool _isSending; // 表示是否正在发送数据。
-        private APacketParser _packetParser; // 数据包解析器。
         private Action<uint, long, long, MemoryStream, object> _sendAction; // 发送数据的回调方法。
         private readonly CircularBuffer _sendBuffer = new CircularBuffer(); // 发送数据的环形缓冲区。
         private readonly CircularBuffer _receiveBuffer = new CircularBuffer(); // 接收数据的环形缓冲区。
@@ -214,16 +208,16 @@ namespace Fantasy.Core.Network
             if (asyncEventArgs.SocketError != SocketError.Success)
             {
                 Log.Error($"Unable to connect to the target server asyncEventArgs:{asyncEventArgs.SocketError}");
-                
+
                 if (OnConnectFail != null)
                 {
                     ThreadSynchronizationContext.Main.Post(OnConnectFail);
                 }
-                
+
                 Dispose();
                 return;
             }
-            
+
             Receive();
             ClearConnectTimeout(ref _connectTimeoutId);
 
@@ -241,10 +235,10 @@ namespace Fantasy.Core.Network
             while (_messageCache.TryDequeue(out var messageCacheInfo))
             {
                 _sendAction(
-                    messageCacheInfo.RpcId, 
-                    messageCacheInfo.RouteTypeOpCode, 
+                    messageCacheInfo.RpcId,
+                    messageCacheInfo.RouteTypeOpCode,
                     messageCacheInfo.RouteId,
-                    messageCacheInfo.MemoryStream, 
+                    messageCacheInfo.MemoryStream,
                     messageCacheInfo.Message);
             }
 
@@ -317,19 +311,19 @@ namespace Fantasy.Core.Network
             }
 #endif
             _sendBuffer.Write(memoryStream);
-            
+
             // 因为memoryStream对象池出来的、所以需要手动回收下
-            
+
             memoryStream.Dispose();
-            
+
             if (_isSending)
             {
                 return;
             }
-            
+
             Send();
         }
-        
+
         private void Send()
         {
 #if FANTASY_DEVELOP
@@ -344,7 +338,7 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            for (;;)
+            for (; ; )
             {
                 try
                 {
@@ -353,23 +347,23 @@ namespace Fantasy.Core.Network
                         _isSending = false;
                         return;
                     }
-                    
+
                     _isSending = true;
-                    
+
                     var sendSize = CircularBuffer.ChunkSize - _sendBuffer.FirstIndex;
-                    
+
                     if (sendSize > _sendBuffer.Length)
                     {
-                        sendSize = (int) _sendBuffer.Length;
+                        sendSize = (int)_sendBuffer.Length;
                     }
 
                     _outArgs.SetBuffer(_sendBuffer.First, _sendBuffer.FirstIndex, sendSize);
-                    
+
                     if (_socket.SendAsync(_outArgs))
                     {
                         return;
                     }
-                    
+
                     SendCompletedHandler(_outArgs);
                 }
                 catch (Exception e)
@@ -378,7 +372,7 @@ namespace Fantasy.Core.Network
                 }
             }
         }
-        
+
         private void SendCompletedHandler(SocketAsyncEventArgs asyncEventArgs)
         {
 #if FANTASY_DEVELOP
@@ -392,9 +386,9 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             _sendBuffer.FirstIndex += asyncEventArgs.BytesTransferred;
-        
+
             if (_sendBuffer.FirstIndex == CircularBuffer.ChunkSize)
             {
                 _sendBuffer.FirstIndex = 0;
@@ -415,16 +409,16 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             _isSending = false;
             SendCompletedHandler(asyncEventArgs);
-            
+
             if (_sendBuffer.Length > 0)
             {
                 Send();
             }
         }
-        
+
         private void Receive()
         {
 #if FANTASY_DEVELOP
@@ -434,7 +428,7 @@ namespace Fantasy.Core.Network
                 return;
             }
 #endif
-            for (;;)
+            for (; ; )
             {
                 try
                 {
@@ -442,15 +436,15 @@ namespace Fantasy.Core.Network
                     {
                         return;
                     }
-                    
+
                     var size = CircularBuffer.ChunkSize - _receiveBuffer.LastIndex;
                     _innArgs.SetBuffer(_receiveBuffer.Last, _receiveBuffer.LastIndex, size);
-                    
+
                     if (_socket.ReceiveAsync(_innArgs))
                     {
                         return;
                     }
-                    
+
                     ReceiveCompletedHandler(_innArgs);
                 }
                 catch (Exception e)
@@ -459,7 +453,7 @@ namespace Fantasy.Core.Network
                 }
             }
         }
-        
+
         private void ReceiveCompletedHandler(SocketAsyncEventArgs asyncEventArgs)
         {
 #if FANTASY_DEVELOP
@@ -479,16 +473,16 @@ namespace Fantasy.Core.Network
                 Dispose();
                 return;
             }
-            
+
             _receiveBuffer.LastIndex += asyncEventArgs.BytesTransferred;
-                
+
             if (_receiveBuffer.LastIndex >= CircularBuffer.ChunkSize)
             {
                 _receiveBuffer.AddLast();
                 _receiveBuffer.LastIndex = 0;
             }
 
-            for (;;)
+            for (; ; )
             {
                 try
                 {
@@ -496,8 +490,8 @@ namespace Fantasy.Core.Network
                     {
                         return;
                     }
-                    
-                    if (!_packetParser.UnPack(_receiveBuffer,out var packInfo))
+
+                    if (!UnPack(_receiveBuffer, out var packInfo))
                     {
                         break;
                     }
@@ -508,7 +502,7 @@ namespace Fantasy.Core.Network
                         {
                             return;
                         }
-                        
+
                         // ReSharper disable once PossibleNullReferenceException
                         OnReceiveMemoryStream(packInfo);
                     });
@@ -525,7 +519,7 @@ namespace Fantasy.Core.Network
                 }
             }
         }
-        
+
         private void OnReceiveComplete(SocketAsyncEventArgs asyncEventArgs)
         {
 #if FANTASY_DEVELOP
@@ -554,7 +548,7 @@ namespace Fantasy.Core.Network
             {
                 return;
             }
-            
+
             if (NetworkThread.Instance.ManagedThreadId == Thread.CurrentThread.ManagedThreadId)
             {
                 var timeoutId = connectTimeoutId;
@@ -562,12 +556,12 @@ namespace Fantasy.Core.Network
                 connectTimeoutId = 0;
                 return;
             }
-            
+
             TimerScheduler.Instance.Core.RemoveByRef(ref connectTimeoutId);
         }
 
         #endregion
-        
+
         #region 网络线程（由Socket底层产生的线程）
 
         private void OnComplete(object sender, SocketAsyncEventArgs asyncEventArgs)
@@ -580,25 +574,25 @@ namespace Fantasy.Core.Network
             switch (asyncEventArgs.LastOperation)
             {
                 case SocketAsyncOperation.Connect:
-                {
-                    NetworkThread.Instance.SynchronizationContext.Post(() => OnNetworkConnectComplete(asyncEventArgs));
-                    break;
-                }
+                    {
+                        NetworkThread.Instance.SynchronizationContext.Post(() => OnNetworkConnectComplete(asyncEventArgs));
+                        break;
+                    }
                 case SocketAsyncOperation.Receive:
-                {
-                    NetworkThread.Instance.SynchronizationContext.Post(() => OnReceiveComplete(asyncEventArgs));
-                    break;
-                }
+                    {
+                        NetworkThread.Instance.SynchronizationContext.Post(() => OnReceiveComplete(asyncEventArgs));
+                        break;
+                    }
                 case SocketAsyncOperation.Send:
-                {
-                    NetworkThread.Instance.SynchronizationContext.Post(() => OnSendComplete(asyncEventArgs));
-                    break;
-                }
+                    {
+                        NetworkThread.Instance.SynchronizationContext.Post(() => OnSendComplete(asyncEventArgs));
+                        break;
+                    }
                 case SocketAsyncOperation.Disconnect:
-                {
-                    NetworkThread.Instance.SynchronizationContext.Post(Dispose);
-                    break;
-                }
+                    {
+                        NetworkThread.Instance.SynchronizationContext.Post(Dispose);
+                        break;
+                    }
             }
         }
 
