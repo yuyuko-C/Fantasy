@@ -57,7 +57,6 @@ namespace Fantasy.Core.Network
         public KCPClientNetwork(Scene scene, NetworkTarget networkTarget) : base(scene, NetworkType.Client, NetworkProtocolType.KCP, networkTarget)
         {
             _startTime = TimeHelper.Now;
-            NetworkThread.Instance.AddNetwork(this);
         }
 
         /// <summary>

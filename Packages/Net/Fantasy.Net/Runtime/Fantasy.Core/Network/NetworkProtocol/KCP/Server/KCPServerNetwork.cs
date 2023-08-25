@@ -28,7 +28,6 @@ namespace Fantasy.Core.Network
         public KCPServerNetwork(Scene scene, NetworkTarget networkTarget, IPEndPoint address) : base(scene, NetworkType.Server, NetworkProtocolType.KCP, networkTarget)
         {
             _startTime = TimeHelper.Now;
-            NetworkThread.Instance.AddNetwork(this);
 
             NetworkThread.Instance.SynchronizationContext.Post(() =>
             {

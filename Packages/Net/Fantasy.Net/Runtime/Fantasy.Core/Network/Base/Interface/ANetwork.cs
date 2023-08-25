@@ -90,6 +90,8 @@ namespace Fantasy.Core.Network
         /// <param name="networkTarget">网络目标类型。</param>
         protected ANetwork(Scene scene, NetworkType networkType, NetworkProtocolType networkProtocolType, NetworkTarget networkTarget)
         {
+            NetworkThread.Instance.AddNetwork(this);
+
             Scene = scene;
             NetworkType = networkType;
             NetworkTarget = networkTarget;

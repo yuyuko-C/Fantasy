@@ -27,7 +27,6 @@ namespace Fantasy.Core.Network
         public TCPServerNetwork(Scene scene, NetworkTarget networkTarget, IPEndPoint address) : base(scene, NetworkType.Server, NetworkProtocolType.TCP, networkTarget)
         {
             _acceptAsync = new SocketAsyncEventArgs();
-            NetworkThread.Instance.AddNetwork(this);
             NetworkThread.Instance.SynchronizationContext.Post(() =>
             {
                 _random = new Random();

@@ -60,6 +60,13 @@ namespace Fantasy.Core.Network
         /// <returns></returns>
         public static Session Create(ISessionable sessionable, ANetworkMessageScheduler networkMessageScheduler)
         {
+#if FANTASY_DEVELOP
+            // 检查是否在主线程中调用
+            if (ThreadSynchronizationContext.Main.ThreadId != Thread.CurrentThread.ManagedThreadId)
+            {
+                throw new NotSupportedException("Session Create not in MainThread");
+            }
+#endif
             // 创建会话实例
             var session = Entity.Create<Session>(sessionable.Scene);
             session._isessionable = sessionable;

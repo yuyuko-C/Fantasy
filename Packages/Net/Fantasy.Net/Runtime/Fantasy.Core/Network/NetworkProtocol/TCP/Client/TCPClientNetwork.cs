@@ -48,7 +48,6 @@ namespace Fantasy.Core.Network
         /// <param name="networkTarget">网络目标。</param>
         public TCPClientNetwork(Scene scene, NetworkTarget networkTarget) : base(scene, NetworkType.Client, NetworkProtocolType.TCP, networkTarget)
         {
-            NetworkThread.Instance.AddNetwork(this);
         }
 
         /// <summary>
