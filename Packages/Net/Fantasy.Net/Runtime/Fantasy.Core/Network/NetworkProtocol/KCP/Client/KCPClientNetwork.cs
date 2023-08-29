@@ -94,7 +94,6 @@ namespace Fantasy.Core.Network
                 _updateMinTime = 0;
                 _memoryPool.Dispose();
                 _memoryPool = null;
-                _sendAction = null;
                 _rawSendBuffer = null;
                 _rawReceiveBuffer = null;
 
@@ -143,18 +142,6 @@ namespace Fantasy.Core.Network
             _rawReceiveBuffer = new byte[_kcpSettings.Mtu + 5];
             _memoryPool = MemoryPool<byte>.Shared;
 
-            _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
-            {
-                _messageCache.Enqueue(new MessageCacheInfo()
-                {
-                    RpcId = rpcId,
-                    RouteId = routeId,
-                    RouteTypeOpCode = routeTypeOpCode,
-                    Message = message,
-                    MemoryStream = memoryStream
-                });
-            };
-
             _connectTimeoutId = TimerScheduler.Instance.Core.OnceTimer(connectTimeout, () =>
             {
                 if (OnConnectFail == null)
@@ -192,7 +179,6 @@ namespace Fantasy.Core.Network
         private KCPSettings _kcpSettings;
         private MemoryPool<byte> _memoryPool;
         private Queue<MessageCacheInfo> _messageCache;
-        private Action<uint, long, long, MemoryStream, object> _sendAction;
         private readonly Queue<uint> _updateTimeOutTime = new Queue<uint>();
         private EndPoint _clientEndPoint = new IPEndPoint(IPAddress.Any, 0);
         private readonly SortedSet<uint> _updateTimer = new SortedSet<uint>();
@@ -246,28 +232,20 @@ namespace Fantasy.Core.Network
                                 _kcp.SetWindowSize(_kcpSettings.SendWindowSize, _kcpSettings.ReceiveWindowSize);
                                 _kcp.SetMtu(_kcpSettings.Mtu);
                                 _rawSendBuffer = new byte[ushort.MaxValue];
+                                _isSuccessConnected = true;
 
                                 // 把缓存的消息全部发送给服务器
 
-                                _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
-                                {
-                                    if (IsDisposed)
-                                    {
-                                        return;
-                                    }
-
-                                    memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
-                                    Send(memoryStream);
-                                };
-
                                 while (_messageCache.TryDequeue(out var messageCache))
                                 {
-                                    _sendAction(
-                                        messageCache.RpcId,
-                                        messageCache.RouteTypeOpCode,
-                                        messageCache.RouteId,
-                                        messageCache.MemoryStream,
-                                        messageCache.Message);
+                                    if (messageCache.MemoryStream == null)
+                                    {
+                                        Send(ChannelId, messageCache.RpcId, messageCache.RouteTypeOpCode, messageCache.RouteId, messageCache.Message);
+                                    }
+                                    else
+                                    {
+                                        Send(ChannelId, messageCache.RpcId, messageCache.RouteTypeOpCode, messageCache.RouteId, messageCache.MemoryStream);
+                                    }
                                 }
 
                                 _messageCache.Clear();
@@ -373,7 +351,22 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            _sendAction(rpcId, routeTypeOpCode, entityId, memoryStream, null);
+            if (_isSuccessConnected)
+            {
+                memoryStream = PackMessage(rpcId, routeTypeOpCode, entityId, memoryStream, null);
+                Send(memoryStream);
+            }
+            else
+            {
+                _messageCache.Enqueue(new MessageCacheInfo()
+                {
+                    RpcId = rpcId,
+                    RouteId = entityId,
+                    RouteTypeOpCode = routeTypeOpCode,
+                    Message = null,
+                    MemoryStream = memoryStream
+                });
+            }
         }
 
         /// <summary>
@@ -398,7 +391,22 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            _sendAction(rpcId, routeTypeOpCode, entityId, null, message);
+            if (_isSuccessConnected)
+            {
+                MemoryStream memoryStream = PackMessage(rpcId, routeTypeOpCode, entityId, null, message);
+                Send(memoryStream);
+            }
+            else
+            {
+                _messageCache.Enqueue(new MessageCacheInfo()
+                {
+                    RpcId = rpcId,
+                    RouteId = entityId,
+                    RouteTypeOpCode = routeTypeOpCode,
+                    Message = message,
+                    MemoryStream = null
+                });
+            }
         }
 
         private void Output(byte[] bytes, int count)

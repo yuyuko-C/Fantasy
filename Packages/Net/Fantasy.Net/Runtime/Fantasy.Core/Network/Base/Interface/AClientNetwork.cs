@@ -47,6 +47,12 @@ namespace Fantasy.Core.Network
         private APacketParser _packetParser;
 
         /// <summary>
+        /// 客户端是否已成功与服务器建立连接
+        /// </summary>
+        protected bool _isSuccessConnected;
+
+
+        /// <summary>
         /// 初始化抽象客户端网络基类的新实例。
         /// </summary>
         /// <param name="scene">场景对象。</param>
@@ -79,6 +85,7 @@ namespace Fantasy.Core.Network
         {
             return _packetParser.UnPack(buffer, out packInfo);
         }
+
         /// <summary>
         /// 从内存块解析数据包。
         /// </summary>
@@ -98,6 +105,7 @@ namespace Fantasy.Core.Network
             ChannelId = 0;
             _packetParser.Dispose();
             _packetParser = null;
+            _isSuccessConnected = false;
             base.Dispose();
         }
     }

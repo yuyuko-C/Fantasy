@@ -75,24 +75,6 @@ namespace Fantasy.Core.Network
             // 生成随机的 Channel ID
             ChannelId = 0xC0000000 | (uint)new Random().Next();
 
-            // 设置发送操作的委托
-            _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
-            {
-                if (IsDisposed)
-                {
-                    return;
-                }
-
-                _messageCache.Enqueue(new MessageCacheInfo()
-                {
-                    RpcId = rpcId,
-                    RouteId = routeId,
-                    RouteTypeOpCode = routeTypeOpCode,
-                    Message = message,
-                    MemoryStream = memoryStream
-                });
-            };
-
             // 设置异步操作完成时的回调函数
             _outArgs.Completed += OnComplete;
             _innArgs.Completed += OnComplete;
@@ -159,8 +141,6 @@ namespace Fantasy.Core.Network
                 _innArgs?.Dispose();
                 _sendBuffer?.Dispose();
                 _receiveBuffer?.Dispose();
-
-                _sendAction = null;
                 _isSending = false;
 
                 if (_messageCache != null)
@@ -180,7 +160,6 @@ namespace Fantasy.Core.Network
 
         private Socket _socket; // 用于通信的套接字。
         private bool _isSending; // 表示是否正在发送数据。
-        private Action<uint, long, long, MemoryStream, object> _sendAction; // 发送数据的回调方法。
         private readonly CircularBuffer _sendBuffer = new CircularBuffer(); // 发送数据的环形缓冲区。
         private readonly CircularBuffer _receiveBuffer = new CircularBuffer(); // 接收数据的环形缓冲区。
         private readonly SocketAsyncEventArgs _outArgs = new SocketAsyncEventArgs(); // 发送数据异步操作的参数。
@@ -217,29 +196,21 @@ namespace Fantasy.Core.Network
                 Dispose();
                 return;
             }
+            _isSuccessConnected = true;
 
             Receive();
             ClearConnectTimeout(ref _connectTimeoutId);
 
-            _sendAction = (rpcId, routeTypeOpCode, routeId, memoryStream, message) =>
-            {
-                if (IsDisposed)
-                {
-                    return;
-                }
-
-                memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, message);
-                Send(memoryStream);
-            };
-
             while (_messageCache.TryDequeue(out var messageCacheInfo))
             {
-                _sendAction(
-                    messageCacheInfo.RpcId,
-                    messageCacheInfo.RouteTypeOpCode,
-                    messageCacheInfo.RouteId,
-                    messageCacheInfo.MemoryStream,
-                    messageCacheInfo.Message);
+                if (messageCacheInfo.MemoryStream == null)
+                {
+                    Send(ChannelId, messageCacheInfo.RpcId, messageCacheInfo.RouteTypeOpCode, messageCacheInfo.RouteId, messageCacheInfo.Message);
+                }
+                else
+                {
+                    Send(ChannelId, messageCacheInfo.RpcId, messageCacheInfo.RouteTypeOpCode, messageCacheInfo.RouteId, messageCacheInfo.MemoryStream);
+                }
             }
 
             _messageCache.Clear();
@@ -273,7 +244,22 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            _sendAction(rpcId, routeTypeOpCode, routeId, null, message);
+            if (_isSuccessConnected)
+            {
+                MemoryStream memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, null, message);
+                Send(memoryStream);
+            }
+            else
+            {
+                _messageCache.Enqueue(new MessageCacheInfo()
+                {
+                    RpcId = rpcId,
+                    RouteId = routeId,
+                    RouteTypeOpCode = routeTypeOpCode,
+                    Message = message,
+                    MemoryStream = null
+                });
+            }
         }
 
         /// <summary>
@@ -298,7 +284,27 @@ namespace Fantasy.Core.Network
                 return;
             }
 
-            _sendAction(rpcId, routeTypeOpCode, routeId, memoryStream, null);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (_isSuccessConnected)
+            {
+                memoryStream = PackMessage(rpcId, routeTypeOpCode, routeId, memoryStream, null);
+                Send(memoryStream);
+            }
+            else
+            {
+                _messageCache.Enqueue(new MessageCacheInfo()
+                {
+                    RpcId = rpcId,
+                    RouteId = routeId,
+                    RouteTypeOpCode = routeTypeOpCode,
+                    Message = null,
+                    MemoryStream = memoryStream
+                });
+            }
         }
 
         /// <summary>
